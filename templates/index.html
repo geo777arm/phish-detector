@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phish Detector</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<main>
+  <header class="cell">
+    <span class="mark" aria-hidden="true"></span>
+    <h1>Phish Detector</h1>
+    <span class="version">v0.1</span>
+  </header>
+
+  <section class="cell input">
+    <div class="section-head">
+      <span class="label">01 Текст письма</span>
+      <span class="examples">
+        <button type="button" class="link" data-example="phish">Пример фишинга</button>
+        <button type="button" class="link" data-example="safe">Обычное письмо</button>
+      </span>
+    </div>
+    <textarea id="email" placeholder="Вставь сюда текст подозрительного письма…"></textarea>
+    <button id="analyze" class="primary">Проверить письмо <span aria-hidden="true">→</span></button>
+  </section>
+
+  <section class="cell result" id="result" hidden>
+    <div class="section-head"><span class="label">02 Результат</span></div>
+    <div class="score-row">
+      <span class="score" id="score">0<small>%</small></span>
+      <span class="verdict" id="verdict"></span>
+    </div>
+    <div class="meter"><div class="meter-fill" id="meter"></div></div>
+    <div class="parts">
+      <div><span class="label">Правила</span><span id="rules-score">—</span></div>
+      <div><span class="label">Модель</span><span id="model-score">—</span></div>
+    </div>
+  </section>
+
+  <section class="cell reasons" id="reasons-block" hidden>
+    <div class="section-head"><span class="label">03 Почему</span></div>
+    <ul id="reasons"></ul>
+  </section>
+
+  <footer class="cell">
+    <p>Письма никуда не отправляются: проверка идёт у тебя на компьютере.</p>
+  </footer>
+</main>
+
+<script>
+const EXAMPLES = {
+  phish: "Уважаемый клиент! Ваш аккаунт будет заблокирован в течение 24 часов. Срочно подтвердите пароль по ссылке: http://sberbank-secure-login.ru/verify",
+  safe: "Привет! Завтра встречаемся в 15:00 у школы, не забудь тетрадь по физике.",
+};
+
+document.querySelectorAll("[data-example]").forEach(btn =>
+  btn.addEventListener("click", () => { document.getElementById("email").value = EXAMPLES[btn.dataset.example]; })
+);
+
+function verdictFor(score) {
+  if (score >= 60) return ["Скорее всего фишинг", "bad"];
+  if (score >= 30) return ["Подозрительно", "warn"];
+  return ["Похоже на обычное письмо", "ok"];
+}
+
+document.getElementById("analyze").addEventListener("click", async () => {
+  const text = document.getElementById("email").value.trim();
+  if (!text) return;
+  const res = await fetch("/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  const data = await res.json();
+
+  const [verdict, level] = verdictFor(data.score);
+  document.getElementById("score").innerHTML = `${data.score}<small>%</small>`;
+  document.getElementById("verdict").textContent = verdict;
+  document.getElementById("result").dataset.level = level;
+  document.getElementById("meter").style.width = `${data.score}%`;
+  document.getElementById("rules-score").textContent = `${data.rules_score}%`;
+  document.getElementById("model-score").textContent =
+    data.model_score === null ? "не обучена" : `${data.model_score}%`;
+
+  const list = document.getElementById("reasons");
+  list.innerHTML = "";
+  for (const s of data.signs) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span></span><b>+${s.points}</b>`;
+    li.firstChild.textContent = s.reason;
+    list.appendChild(li);
+  }
+  if (data.signs.length === 0) list.innerHTML = "<li><span>Правила ничего подозрительного не нашли</span></li>";
+
+  document.getElementById("result").hidden = false;
+  document.getElementById("reasons-block").hidden = false;
+});
+</script>
+</body>
+</html>
